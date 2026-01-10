@@ -86,6 +86,7 @@ aws ec2 describe-snapshots \
 ### The task is successfully completed once the snapshot state shows completed in the us-east-1 region.
 
 <img width="500" height="300" alt="image" src="https://github.com/user-attachments/assets/c11557f1-51d3-4f72-9d61-1928761e084b" />
+<img width="500" height="300" alt="image" src="https://github.com/user-attachments/assets/df6bac37-7ee6-4843-bdf7-112c0b712a71" />
 <img width="500" height="300" alt="image" src="https://github.com/user-attachments/assets/f52e442e-68f1-4502-9c87-451c485ffd9f" />
 <img width="500" height="300" alt="image" src="https://github.com/user-attachments/assets/7a9f3539-7dbe-4a18-9100-af9461f8cdfe" />
 
