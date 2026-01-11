@@ -1,5 +1,4 @@
-# KodeKloud 100 Days of Cloud – Day 17  
-## AWS IAM: Create IAM Group
+# Day 17 : AWS IAM: Create IAM Group
 
 ### Task Description
 As part of the AWS cloud migration, the Nautilus DevOps team is organizing access management using IAM groups.  
