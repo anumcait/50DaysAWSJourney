@@ -60,7 +60,7 @@ sudo systemctl enable httpd
 
 Create a test web page:
 
-echo "<h1>EC2 with Elastic IP - KodeKloud Day 21</h1>" | sudo tee /var/www/html/index.html
+` echo "<h1>EC2 with Elastic IP - KodeKloud Day 21</h1>" | sudo tee /var/www/html/index.html `
 
 ---
 
