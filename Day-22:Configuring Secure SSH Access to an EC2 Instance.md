@@ -7,117 +7,136 @@ Requirement:
 - SSH key location: /root/.ssh/
 - Passwordless SSH: aws-client → EC2 (root user)
 
-## Step 1: Verify AWS Client & Region
+## Step 1: Login to AWS from aws-client
+
+On the aws-client host, load credentials:
 ```
 showcreds
+aws configure
+```
+
+Enter values from showcreds
+Set region explicitly:
+```
 aws configure set region us-east-1
-aws configure get region
-```
-
-Output must be:
-```
-us-east-1
-```
----
-
-## Step 2: Create SSH Key on aws-client
-
-```
-mkdir -p /root/.ssh
-chmod 700 /root/.ssh
-```
-
-Create the key (only if not exists):
-```
-ssh-keygen -t rsa -b 2048 -f /root/.ssh/datacenter_key -N ""
 ```
 
 Verify:
 ```
-ls -l /root/.ssh/datacenter_key*
+aws sts get-caller-identity
 ```
 ---
 
-## Step 3: Get Latest Amazon Linux 2 AMI (Stable Method)
+## Step 2: Create SSH key on aws-client (if not present)
 ```
-AMI_ID=$(aws ec2 describe-images \
---owners amazon \
---filters "Name=name,Values=amzn2-ami-hvm-*-x86_64-gp2" \
---query 'Images | sort_by(@, &CreationDate)[-1].ImageId' \
---output text)
-```
-echo $AMI_ID
-
----
-
-## Step 4: Create User Data Script (Adds SSH Key to root)
-
-This is CRITICAL for passwordless SSH.
-```
-cat > /root/user-data.sh <<EOF
-#!/bin/bash
 mkdir -p /root/.ssh
 chmod 700 /root/.ssh
-echo "$(cat /root/.ssh/datacenter_key.pub)" >> /root/.ssh/authorized_keys
+```
+
+Check and create key:
+```
+[ ! -f /root/.ssh/id_rsa ] && ssh-keygen -t rsa -b 2048 -f /root/.ssh/id_rsa -N ""
+```
+
+Public key:
+```
+cat /root/.ssh/id_rsa.pub
+```
+---
+
+## Step 3: Create a Security Group (SSH access)
+```
+SG_ID=$(aws ec2 create-security-group \
+  --group-name xfusion-ssh-sg \
+  --description "Allow SSH access" \
+  --query 'GroupId' \
+  --output text)
+```
+
+Allow SSH:
+```
+aws ec2 authorize-security-group-ingress \
+  --group-id $SG_ID \
+  --protocol tcp \
+  --port 22 \
+  --cidr 0.0.0.0/0
+```
+---
+
+## Step 4: Get Latest Amazon Linux 2 AMI
+```
+AMI_ID=$(aws ec2 describe-images \
+  --owners amazon \
+  --filters "Name=name,Values=amzn2-ami-hvm-*-x86_64-gp2" \
+            "Name=state,Values=available" \
+  --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' \
+  --output text)
+```
+---
+
+## Step 5: Prepare User-Data to add SSH key to root
+```
+cat <<EOF > /root/userdata.sh
+#!/bin/bash
+mkdir -p /root/.ssh
+echo "$(cat /root/.ssh/id_rsa.pub)" >> /root/.ssh/authorized_keys
+chmod 700 /root/.ssh
 chmod 600 /root/.ssh/authorized_keys
-sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-systemctl restart sshd
 EOF
 ```
 ---
 
-## Step 5: Launch EC2 Instance
-aws ec2 run-instances \
---image-id $AMI_ID \
---instance-type t2.micro \
---count 1 \
---tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=datacenter-ec2}]" \
---user-data file:///root/user-data.sh
+## Step 6: Launch EC2 Instance
+```
+INSTANCE_ID=$(aws ec2 run-instances \
+  --image-id $AMI_ID \
+  --instance-type t2.micro \
+  --security-group-ids $SG_ID \
+  --user-data file:///root/userdata.sh \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=xfusion-ec2}]' \
+  --query 'Instances[0].InstanceId' \
+  --output text)
+```
 
+Wait until running:
+```
+aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+```
+---
 
-⏳ Wait 30–40 seconds
+## Step 7: Get Public IP
+```
+PUBLIC_IP=$(aws ec2 describe-instances \
+  --instance-ids $INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' \
+  --output text)
+```
+---
+
+## Step 8: Verify Passwordless SSH Access
+```
+ssh -i /root/.ssh/id_rsa root@$PUBLIC_IP
+```
+
+## ✅ You should log in without a password
+
+- EC2 instance name: xfusion-ec2
+- Instance type: t2.micro
+- Region: us-east-1
+- SSH key created under /root/.ssh/
+- Key added to root authorized_keys
+- Passwordless SSH from aws-client works
 
 ---
 
-## Step 6: Get EC2 Public IP
-aws ec2 describe-instances \
---filters "Name=tag:Name,Values=datacenter-ec2" \
---query 'Reservations[].Instances[].PublicIpAddress' \
---output text
+<img width="1050" height="532" alt="image" src="https://github.com/user-attachments/assets/b0853275-4887-4682-85e9-8891fcb28d13" />
+<img width="1049" height="530" alt="image" src="https://github.com/user-attachments/assets/3f43c535-747f-4df9-a55a-3bb7a97a3869" />
+<img width="1050" height="524" alt="image" src="https://github.com/user-attachments/assets/43812f33-6f1c-4d4e-95dd-a5fe2caf22db" />
+<img width="1050" height="525" alt="image" src="https://github.com/user-attachments/assets/b9a11068-7bba-4736-b52c-311d4acf7300" />
 
 
-Save it:
-
-EC2_IP=<PASTE_IP_HERE>
-
----
-
-## Step 7: Test Passwordless SSH (FINAL)
-ssh -i /root/.ssh/datacenter_key root@$EC2_IP
 
 
-✅ No password prompt = SUCCESS
 
----
 
-## Step 8: Verify Inside EC2
-```
-whoami
-hostname
-```
 
-Expected:
-
-```
-root
-ip-xxx-xxx-xxx-xxx
-```
-
-## Result
-
-- ✔ EC2 instance datacenter-ec2 created
-- ✔ SSH key generated on aws-client
-- ✔ Root passwordless SSH configured
-- ✔ Region us-east-1 compliance
-- ✔ Matches KodeKloud evaluation criteria
